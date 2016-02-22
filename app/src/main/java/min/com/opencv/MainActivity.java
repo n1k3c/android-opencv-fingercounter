@@ -1,13 +1,22 @@
 package min.com.opencv;
 
-import java.util.LinkedList;
-import java.util.List;
-import java.util.concurrent.atomic.AtomicBoolean;
+import android.app.Activity;
+import android.hardware.Camera;
+import android.os.Bundle;
+import android.os.Handler;
+import android.os.SystemClock;
+import android.util.Log;
+import android.view.MotionEvent;
+import android.view.View;
+import android.view.View.OnTouchListener;
+import android.view.WindowManager;
+import android.widget.SeekBar;
+import android.widget.TextView;
+import android.widget.Toast;
 
 import org.opencv.android.BaseLoaderCallback;
 import org.opencv.android.CameraBridgeViewBase.CvCameraViewFrame;
 import org.opencv.android.CameraBridgeViewBase.CvCameraViewListener2;
-import org.opencv.android.JavaCameraView;
 import org.opencv.android.LoaderCallbackInterface;
 import org.opencv.android.OpenCVLoader;
 import org.opencv.core.Core;
@@ -21,141 +30,79 @@ import org.opencv.core.Point;
 import org.opencv.core.Rect;
 import org.opencv.core.RotatedRect;
 import org.opencv.core.Scalar;
-import org.opencv.imgproc.Imgproc;
-import org.opencv.imgproc.Moments;
-
-
-import android.app.Activity;
-import android.graphics.SumPathEffect;
-import android.hardware.Camera;
-import android.os.Bundle;
-import android.os.Handler;
-import android.util.Log;
-import android.view.MotionEvent;
-import android.view.View;
-import android.view.View.OnTouchListener;
-import android.view.WindowManager;
-import android.widget.SeekBar;
-import android.widget.TextView;
-import android.widget.Toast;
-
 import org.opencv.core.Size;
+import org.opencv.imgproc.Imgproc;
+
+import java.util.LinkedList;
+import java.util.List;
 
 import min.com.opencv.imageProcessing.ColorBlobDetector;
 
 public class MainActivity extends Activity implements OnTouchListener, CvCameraViewListener2 {
 
-    private static final String    TAG                 = "HandPose::MainActivity";
-    public static final int        JAVA_DETECTOR       = 0;
-    public static final int        NATIVE_DETECTOR     = 1;
-
-    private Mat                    mRgba;
-    private Mat                    mGray;
-    private Mat 					mIntermediateMat;
-
-    private int                    mDetectorType       = JAVA_DETECTOR;
-
-    private CustomSufaceView   mOpenCvCameraView;
-    private List<Size> mResolutionList;
-
-    private SeekBar minTresholdSeekbar = null;
-    private SeekBar maxTresholdSeekbar = null;
-    private TextView minTresholdSeekbarText = null;
-    private TextView numberOfFingersText = null;
-
-    double iThreshold = 0;
-
-    private Scalar               	mBlobColorHsv;
-    private Scalar               	mBlobColorRgba;
-    private ColorBlobDetector    	mDetector;
-    private Mat                  	mSpectrum;
-    private boolean				mIsColorSelected = false;
-
-    private Size                 	SPECTRUM_SIZE;
-    private Scalar               	CONTOUR_COLOR;
-    private Scalar               	CONTOUR_COLOR_WHITE;
-
+    private static final String TAG = "MainActivity";
     final Handler mHandler = new Handler();
+    double iThreshold = 0;
     int numberOfFingers = 0;
-
+    private Mat mRgba;
+    private Mat mGray;
+    private Mat mIntermediateMat;
+    private CustomSufaceView mOpenCvCameraView;
+    private TextView numberOfFingersText = null;
     final Runnable mUpdateFingerCountResults = new Runnable() {
         public void run() {
             updateNumberOfFingers();
         }
     };
-
-    private BaseLoaderCallback  mLoaderCallback = new BaseLoaderCallback(this) {
+    private Scalar mBlobColorHsv;
+    private Scalar mBlobColorRgba;
+    private ColorBlobDetector mDetector;
+    private Mat mSpectrum;
+    private boolean mIsColorSelected = false;
+    private Size SPECTRUM_SIZE;
+    private Scalar CONTOUR_COLOR;
+    private Scalar CONTOUR_COLOR_WHITE;
+    private BaseLoaderCallback mLoaderCallback = new BaseLoaderCallback(this) {
         @Override
         public void onManagerConnected(int status) {
             switch (status) {
-                case LoaderCallbackInterface.SUCCESS:
-                {
+                case LoaderCallbackInterface.SUCCESS: {
                     Log.i(TAG, "OpenCV loaded successfully");
                     mOpenCvCameraView.enableView();
                     mOpenCvCameraView.setOnTouchListener(MainActivity.this);
-                    // 640x480
-                } break;
-                default:
-                {
+                }
+                break;
+                default: {
                     super.onManagerConnected(status);
-                } break;
+                }
+                break;
             }
         }
     };
 
-    public MainActivity() {
-        Log.i(TAG, "Instantiated new " + this.getClass());
-    }
-
-    /** Called when the activity is first created. */
     @Override
     public void onCreate(Bundle savedInstanceState) {
-        Log.i(TAG, "called onCreate");
         super.onCreate(savedInstanceState);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-
         setContentView(R.layout.main_surface_view);
 
         mOpenCvCameraView = (CustomSufaceView) findViewById(R.id.main_surface_view);
         mOpenCvCameraView.setCvCameraViewListener(this);
 
-        minTresholdSeekbarText = (TextView) findViewById(R.id.textView3);
-
-
         numberOfFingersText = (TextView) findViewById(R.id.numberOfFingers);
 
-        minTresholdSeekbar = (SeekBar)findViewById(R.id.seekBar1);
-        minTresholdSeekbar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
-            int progressChanged = 0;
-
-            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser){
-                progressChanged = progress;
-                minTresholdSeekbarText.setText(String.valueOf(progressChanged));
-            }
-
-            public void onStartTrackingTouch(SeekBar seekBar) {
-                // TODO Auto-generated method stub
-            }
-
-            public void onStopTrackingTouch(SeekBar seekBar) {
-                minTresholdSeekbarText.setText(String.valueOf(progressChanged));
-            }
-        });
-        minTresholdSeekbar.setProgress(8700);
     }
 
     @Override
-    public void onPause()
-    {
+    public void onPause() {
         super.onPause();
-        if (mOpenCvCameraView != null){
+        if (mOpenCvCameraView != null) {
             mOpenCvCameraView.disableView();
         }
     }
 
     @Override
-    public void onResume()
-    {
+    public void onResume() {
         super.onResume();
         OpenCVLoader.initAsync(OpenCVLoader.OPENCV_VERSION_2_4_3, this, mLoaderCallback);
     }
@@ -170,28 +117,14 @@ public class MainActivity extends Activity implements OnTouchListener, CvCameraV
         mRgba = new Mat();
         mIntermediateMat = new Mat();
 
-        /*
-        mResolutionList = mOpenCvCameraView.getResolutionList();
-        ListIterator<Size> resolutionItr = mResolutionList.listIterator();
-        while(resolutionItr.hasNext()) {
-            Size element = resolutionItr.next();
-            Log.i(TAG, "Resolution Option ["+Integer.valueOf(element.width).toString() + "x" + Integer.valueOf(element.height).toString()+"]");
-        }
-
-        Size resolution = mResolutionList.get(7);
-        mOpenCvCameraView.setResolution(resolution);
-        resolution = mOpenCvCameraView.getResolution();
-        String caption = "Resolution "+ Integer.valueOf(resolution.width).toString() + "x" + Integer.valueOf(resolution.height).toString();
-        Toast.makeText(this, caption, Toast.LENGTH_SHORT).show();
-        */
         Camera.Size resolution = mOpenCvCameraView.getResolution();
-        String caption = "Resolution "+ Integer.valueOf(resolution.width).toString() + "x" + Integer.valueOf(resolution.height).toString();
+        String caption = "Resolution " + Integer.valueOf(resolution.width).toString() + "x" + Integer.valueOf(resolution.height).toString();
         Toast.makeText(this, caption, Toast.LENGTH_SHORT).show();
 
         Camera.Parameters cParams = mOpenCvCameraView.getParameters();
         cParams.setFocusMode(Camera.Parameters.FOCUS_MODE_INFINITY);
         mOpenCvCameraView.setParameters(cParams);
-        Toast.makeText(this, "Focus mode : "+cParams.getFocusMode(), Toast.LENGTH_SHORT).show();
+        Toast.makeText(this, "Focus mode : " + cParams.getFocusMode(), Toast.LENGTH_SHORT).show();
 
         mRgba = new Mat(height, width, CvType.CV_8UC4);
         mDetector = new ColorBlobDetector();
@@ -199,8 +132,8 @@ public class MainActivity extends Activity implements OnTouchListener, CvCameraV
         mBlobColorRgba = new Scalar(255);
         mBlobColorHsv = new Scalar(255);
         SPECTRUM_SIZE = new Size(200, 64);
-        CONTOUR_COLOR = new Scalar(255,0,0,255);
-        CONTOUR_COLOR_WHITE = new Scalar(255,255,255,255);
+        CONTOUR_COLOR = new Scalar(255, 0, 0, 255);
+        CONTOUR_COLOR_WHITE = new Scalar(255, 0, 0, 255);
 
     }
 
@@ -216,8 +149,13 @@ public class MainActivity extends Activity implements OnTouchListener, CvCameraV
         int xOffset = (mOpenCvCameraView.getWidth() - cols) / 2;
         int yOffset = (mOpenCvCameraView.getHeight() - rows) / 2;
 
-        int x = (int)event.getX() - xOffset;
-        int y = (int)event.getY() - yOffset;
+        int x = (int) event.getX() - xOffset;
+        int y = (int) event.getY() - yOffset;
+
+        Log.i(TAG, "cols-" + cols + "rows-" + rows);
+        Log.i(TAG, "xoffset-" + xOffset + "yoffset" + yOffset);
+        Log.i(TAG, "x-" + x + "y-" + y);
+
 
         Log.i(TAG, "Touch image coordinates: (" + x + ", " + y + ")");
 
@@ -225,11 +163,11 @@ public class MainActivity extends Activity implements OnTouchListener, CvCameraV
 
         Rect touchedRect = new Rect();
 
-        touchedRect.x = (x>5) ? x-5 : 0;
-        touchedRect.y = (y>5) ? y-5 : 0;
+        touchedRect.x = (x > 5) ? x - 5 : 0;
+        touchedRect.y = (y > 5) ? y - 5 : 0;
 
-        touchedRect.width = (x+5 < cols) ? x + 5 - touchedRect.x : cols - touchedRect.x;
-        touchedRect.height = (y+5 < rows) ? y + 5 - touchedRect.y : rows - touchedRect.y;
+        touchedRect.width = (x + 5 < cols) ? x + 5 - touchedRect.x : cols - touchedRect.x;
+        touchedRect.height = (y + 5 < rows) ? y + 5 - touchedRect.y : rows - touchedRect.y;
 
         Mat touchedRegionRgba = mRgba.submat(touchedRect);
 
@@ -238,7 +176,7 @@ public class MainActivity extends Activity implements OnTouchListener, CvCameraV
 
         // Calculate average color of touched region
         mBlobColorHsv = Core.sumElems(touchedRegionHsv);
-        int pointCount = touchedRect.width*touchedRect.height;
+        int pointCount = touchedRect.width * touchedRect.height;
         for (int i = 0; i < mBlobColorHsv.val.length; i++)
             mBlobColorHsv.val[i] /= pointCount;
 
@@ -271,8 +209,6 @@ public class MainActivity extends Activity implements OnTouchListener, CvCameraV
         mRgba = inputFrame.rgba();
         mGray = inputFrame.gray();
 
-        iThreshold = minTresholdSeekbar.getProgress();
-
         //Imgproc.blur(mRgba, mRgba, new Size(5,5));
         Imgproc.GaussianBlur(mRgba, mRgba, new org.opencv.core.Size(3, 3), 1, 1);
         //Imgproc.medianBlur(mRgba, mRgba, 3);
@@ -288,7 +224,7 @@ public class MainActivity extends Activity implements OnTouchListener, CvCameraV
             return mRgba;
         }
 
-        RotatedRect rect = Imgproc.minAreaRect(new MatOfPoint2f(contours.get(0)	.toArray()));
+        RotatedRect rect = Imgproc.minAreaRect(new MatOfPoint2f(contours.get(0).toArray()));
 
         double boundWidth = rect.size.width;
         double boundHeight = rect.size.height;
@@ -304,25 +240,24 @@ public class MainActivity extends Activity implements OnTouchListener, CvCameraV
         }
 
         Rect boundRect = Imgproc.boundingRect(new MatOfPoint(contours.get(boundPos).toArray()));
-        Core.rectangle( mRgba, boundRect.tl(), boundRect.br(), CONTOUR_COLOR_WHITE, 2, 8, 0 );
+        Core.rectangle(mRgba, boundRect.tl(), boundRect.br(), CONTOUR_COLOR_WHITE, 2, 8, 0);
 
         Log.d(TAG,
-                " Row start ["+
-                        (int) boundRect.tl().y + "] row end ["+
-                        (int) boundRect.br().y+"] Col start ["+
-                        (int) boundRect.tl().x+"] Col end ["+
-                        (int) boundRect.br().x+"]");
+                " Row start [" +
+                        (int) boundRect.tl().y + "] row end [" +
+                        (int) boundRect.br().y + "] Col start [" +
+                        (int) boundRect.tl().x + "] Col end [" +
+                        (int) boundRect.br().x + "]");
 
-        int rectHeightThresh = 0;
         double a = boundRect.br().y - boundRect.tl().y;
         a = a * 0.7;
         a = boundRect.tl().y + a;
 
         Log.d(TAG,
-                " A ["+a+"] br y - tl y = ["+(boundRect.br().y - boundRect.tl().y)+"]");
+                " A [" + a + "] br y - tl y = [" + (boundRect.br().y - boundRect.tl().y) + "]");
 
         //Core.rectangle( mRgba, boundRect.tl(), boundRect.br(), CONTOUR_COLOR, 2, 8, 0 );
-        Core.rectangle( mRgba, boundRect.tl(), new Point(boundRect.br().x, a), CONTOUR_COLOR, 2, 8, 0 );
+        Core.rectangle(mRgba, boundRect.tl(), new Point(boundRect.br().x, a), CONTOUR_COLOR, 2, 8, 0);
 
         MatOfPoint2f pointMat = new MatOfPoint2f();
         Imgproc.approxPolyDP(new MatOfPoint2f(contours.get(boundPos).toArray()), pointMat, 3, true);
@@ -332,9 +267,9 @@ public class MainActivity extends Activity implements OnTouchListener, CvCameraV
         MatOfInt4 convexDefect = new MatOfInt4();
         Imgproc.convexHull(new MatOfPoint(contours.get(boundPos).toArray()), hull);
 
-        if(hull.toArray().length < 3) return mRgba;
+        if (hull.toArray().length < 3) return mRgba;
 
-        Imgproc.convexityDefects(new MatOfPoint(contours.get(boundPos)	.toArray()), hull, convexDefect);
+        Imgproc.convexityDefects(new MatOfPoint(contours.get(boundPos).toArray()), hull, convexDefect);
 
         List<MatOfPoint> hullPoints = new LinkedList<MatOfPoint>();
         List<Point> listPo = new LinkedList<Point>();
@@ -348,13 +283,13 @@ public class MainActivity extends Activity implements OnTouchListener, CvCameraV
 
         List<MatOfPoint> defectPoints = new LinkedList<MatOfPoint>();
         List<Point> listPoDefect = new LinkedList<Point>();
-        for (int j = 0; j < convexDefect.toList().size(); j = j+4) {
-            Point farPoint = contours.get(boundPos).toList().get(convexDefect.toList().get(j+2));
-            Integer depth = convexDefect.toList().get(j+3);
-            if(depth > iThreshold && farPoint.y < a){
-                listPoDefect.add(contours.get(boundPos).toList().get(convexDefect.toList().get(j+2)));
+        for (int j = 0; j < convexDefect.toList().size(); j = j + 4) {
+            Point farPoint = contours.get(boundPos).toList().get(convexDefect.toList().get(j + 2));
+            Integer depth = convexDefect.toList().get(j + 3);
+            if (depth > iThreshold && farPoint.y < a) {
+                listPoDefect.add(contours.get(boundPos).toList().get(convexDefect.toList().get(j + 2)));
             }
-            Log.d(TAG, "defects ["+j+"] " + convexDefect.toList().get(j+3));
+            Log.d(TAG, "defects [" + j + "] " + convexDefect.toList().get(j + 3));
         }
 
         MatOfPoint e2 = new MatOfPoint();
@@ -370,18 +305,18 @@ public class MainActivity extends Activity implements OnTouchListener, CvCameraV
         Log.d(TAG, "Defect total " + defectsTotal);
 
         this.numberOfFingers = listPoDefect.size();
-        if(this.numberOfFingers > 5) this.numberOfFingers = 5;
+        if (this.numberOfFingers > 5) this.numberOfFingers = 5;
 
         mHandler.post(mUpdateFingerCountResults);
 
-        for(Point p : listPoDefect){
-            Core.circle(mRgba, p, 6, new Scalar(255,0,255));
+        for (Point p : listPoDefect) {
+            Core.circle(mRgba, p, 6, new Scalar(255, 0, 255));
         }
 
         return mRgba;
     }
 
-    public void updateNumberOfFingers(){
+    public void updateNumberOfFingers() {
         numberOfFingersText.setText(String.valueOf(this.numberOfFingers));
     }
 }
